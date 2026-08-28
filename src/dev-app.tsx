@@ -46,8 +46,6 @@ type TabKey =
 interface TabSpec {
   key: TabKey;
   label: string;
-  groupStart?: string;
-  groupEnd?: boolean;
 }
 
 const TABS: TabSpec[] = [
@@ -58,9 +56,9 @@ const TABS: TabSpec[] = [
   { key: "rehearsals", label: "Rehearsals" },
   { key: "assignments", label: "Assignments" },
   { key: "cast", label: "Cast" },
-  { groupStart: "Scheduling inputs", key: "conflicts", label: "Conflicts" },
+  { key: "conflicts", label: "Conflicts" },
   { key: "preferences", label: "Preferences" },
-  { groupEnd: true, key: "blackouts", label: "Blackouts" },
+  { key: "blackouts", label: "Blackouts" },
   { key: "team", label: "Team" },
   { key: "version", label: "Version" },
 ];
@@ -256,32 +254,20 @@ export const DevApp = () => {
           </div>
         </div>
 
-        <nav className="mb-8 mt-4 inline-flex flex-wrap items-stretch gap-1 rounded-xl border border-border bg-card p-1">
+        <nav className="mb-8 mt-4 inline-flex flex-wrap gap-1 rounded-xl border border-border bg-card p-1">
           {TABS.map((t) => (
-            <span key={t.key} className="inline-flex items-stretch">
-              {t.groupStart && (
-                <span className="ml-1 mr-1 inline-flex items-center border-l border-border pl-3 pr-1 text-[0.62rem] font-bold uppercase tracking-[0.09em] text-muted-foreground">
-                  {t.groupStart}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => navigateTab(t.key)}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                  tab === t.key
-                    ? "bg-navy-500 text-white"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t.label}
-              </button>
-              {t.groupEnd && (
-                <span
-                  aria-hidden="true"
-                  className="mx-1 my-0.5 w-px bg-border"
-                />
-              )}
-            </span>
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => navigateTab(t.key)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? "bg-navy-500 text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
           ))}
         </nav>
 
