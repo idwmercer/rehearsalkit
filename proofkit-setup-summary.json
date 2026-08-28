@@ -78,7 +78,7 @@
     {
       "id": "git",
       "label": "Initialize git",
-      "status": "not-run",
+      "status": "ok",
       "fix": [
         "git init",
         "git add .",
@@ -86,7 +86,9 @@
       ],
       "afterFix": [
         "proofkit doctor"
-      ]
+      ],
+      "summary": "Git initialized."
     }
-  ]
+  ],
+  "finishedAt": "2026-08-04T21:57:30.034Z"
 }

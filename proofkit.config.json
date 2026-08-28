@@ -8,9 +8,28 @@
     "validator": "zod/v4",
     "webviewerScriptName": "PK_execute_data_api",
     "fmMcp": {
-      "enabled": true
+      "enabled": true,
+      "connectedFileName": "RehearsalKit_MASTER"
     },
-    "layouts": []
+    "layouts": [
+      { "layoutName": "Theatres_api", "schemaName": "Theatres" },
+      { "layoutName": "TheatreMembers_api", "schemaName": "TheatreMembers" },
+      { "layoutName": "RosterMembers_api", "schemaName": "RosterMembers" },
+      { "layoutName": "Productions_api", "schemaName": "Productions" },
+      { "layoutName": "ProductionMembers_api", "schemaName": "ProductionMembers" },
+      { "layoutName": "Characters_api", "schemaName": "Characters" },
+      { "layoutName": "Scenes_api", "schemaName": "Scenes" },
+      { "layoutName": "SceneCharacters_api", "schemaName": "SceneCharacters" },
+      { "layoutName": "CastMembers_api", "schemaName": "CastMembers" },
+      { "layoutName": "CastAssignments_api", "schemaName": "CastAssignments" },
+      { "layoutName": "CastConflicts_api", "schemaName": "CastConflicts" },
+      { "layoutName": "DayTimePreferences_api", "schemaName": "DayTimePreferences" },
+      { "layoutName": "Blackouts_api", "schemaName": "Blackouts" },
+      { "layoutName": "RehearsalSessions_api", "schemaName": "RehearsalSessions" },
+      { "layoutName": "RehearsalSessionScenes_api", "schemaName": "RehearsalSessionScenes" },
+      { "layoutName": "SessionCastCalls_api", "schemaName": "SessionCastCalls" },
+      { "layoutName": "KitVersion_api", "schemaName": "KitVersion" }
+    ]
   },
   "ui": "shadcn",
   "appType": "webviewer",

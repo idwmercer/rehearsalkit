@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "check": "ultracite check",
-    "deploy": "proofkit deploy",
+    "deploy": "pnpm build && proofkit deploy --app-name RehearsalKitDev --file RehearsalKit_MASTER --path dist/index.html",
     "dev": "vite",
     "fix": "ultracite fix",
     "format": "ultracite fix .",

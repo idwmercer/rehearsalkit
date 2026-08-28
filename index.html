@@ -3,11 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ProofKit Web Viewer Starter</title>
+    <title>RehearsalKitDev</title>
+    <script>
+      function showError(title, detail) {
+        var el = document.getElementById("root") || document.body;
+        if (!el) return;
+        el.style.cssText =
+          "padding:20px;font-family:monospace;font-size:13px;background:#fff;color:#000";
+        el.innerHTML =
+          '<b style="color:red">' +
+          title +
+          '</b><pre style="white-space:pre-wrap;margin-top:8px">' +
+          detail +
+          "</pre>";
+      }
+      window.onerror = function (msg, src, line, col, err) {
+        showError(
+          "JS Error",
+          msg + "\n" + src + " line " + line + "\n\n" + (err ? err.stack : "")
+        );
+      };
+      window.onunhandledrejection = function (e) {
+        showError("Unhandled Promise Rejection", String(e.reason));
+      };
+    </script>
   </head>
 
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/dev-main.tsx"></script>
   </body>
 </html>
