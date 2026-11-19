@@ -10,7 +10,9 @@ import {
   TheatresLayout,
 } from "../config/schemas/filemaker/client";
 import { emptyOnNoRecords } from "../lib/data";
-import { RecordEditModal } from "./record-edit-modal";
+import { buildLookups } from "./lookups";
+import type { Lookups } from "./lookups";
+import { NewRecordButton, RecordEditModal } from "./record-edit-modal";
 import type { DevFieldGroup } from "./record-edit-modal";
 
 const INVITE_STATUS_OPTIONS = ["Pending", "Active", "Suspended"];
@@ -38,12 +40,23 @@ const PRODUCTION_MEMBER_FIELDS: DevFieldGroup[] = [
   },
   {
     fields: [
-      { key: "idProduction", kind: "text", label: "Show (idProduction)" },
-      { key: "idTheatre", kind: "text", label: "Theatre (idTheatre)" },
+      {
+        key: "idProduction",
+        kind: "relation",
+        label: "Show",
+        lookup: "productions",
+      },
+      {
+        key: "idTheatre",
+        kind: "relation",
+        label: "Theatre",
+        lookup: "theatres",
+      },
       {
         key: "idRosterMembers",
-        kind: "text",
-        label: "Roster member (idRosterMembers)",
+        kind: "relation",
+        label: "Roster member",
+        lookup: "rosterMembers",
       },
     ],
   },
@@ -55,7 +68,12 @@ const THEATRE_MEMBER_FIELDS: DevFieldGroup[] = [
       { key: "accountName", kind: "text", label: "Account name" },
       { key: "Role", kind: "text", label: "Role" },
       { key: "PrivilegeSet", kind: "text", label: "Privilege set" },
-      { key: "idTheatre", kind: "text", label: "Theatre (idTheatre)" },
+      {
+        key: "idTheatre",
+        kind: "relation",
+        label: "Theatre",
+        lookup: "theatres",
+      },
     ],
   },
 ];
@@ -87,7 +105,10 @@ interface Column {
 }
 
 type MemberKind = "productionMember" | "theatreMember" | "rosterMember";
-interface SelectedRecord { kind: MemberKind; recordId: string }
+interface SelectedRecord {
+  kind: MemberKind;
+  recordId: string;
+}
 
 const TEAM_QUERY_KEY = ["dev-team-bundle"];
 
@@ -149,6 +170,7 @@ const ROSTER_MEMBER_COLUMNS: Column[] = [
 
 const useRecordMutations = (
   layout: {
+    create: (args: { fieldData: Record<string, string> }) => Promise<unknown>;
     update: (args: {
       fieldData: Record<string, string>;
       recordId: string;
@@ -157,6 +179,12 @@ const useRecordMutations = (
   },
   queryClient: ReturnType<typeof useQueryClient>
 ) => ({
+  create: useMutation({
+    mutationFn: (fieldData: Record<string, string>) =>
+      layout.create({ fieldData }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEY }),
+  }),
   remove: useMutation({
     mutationFn: (recordId: string) => layout.delete({ recordId }),
     onSuccess: () =>
@@ -181,6 +209,8 @@ const MemberSection = ({
   rows,
   totalCount,
   emptyText,
+  newLabel,
+  onNew,
   onSelect,
 }: {
   label: string;
@@ -188,16 +218,21 @@ const MemberSection = ({
   rows: Row[];
   totalCount: number;
   emptyText: string;
+  newLabel: string;
+  onNew: () => void;
   onSelect: (recordId: string) => void;
 }) => (
   <div>
-    <div className="mb-3 flex items-center justify-between">
+    <div className="mb-3 flex items-center justify-between gap-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
-      <span className="text-sm text-muted-foreground">
-        {rows.length} of {totalCount} records
-      </span>
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground">
+          {rows.length} of {totalCount} records
+        </span>
+        <NewRecordButton label={newLabel} onClick={onNew} />
+      </div>
     </div>
     <div className="overflow-x-auto rounded-2xl border border-border bg-card">
       <table className="w-full min-w-[640px] text-sm">
@@ -273,6 +308,11 @@ const EYEBROW: Record<MemberKind, string> = {
   rosterMember: "Team · RosterMembers",
   theatreMember: "Team · TheatreMembers",
 };
+const NEW_TITLE: Record<MemberKind, string> = {
+  productionMember: "New production member",
+  rosterMember: "New roster member",
+  theatreMember: "New theatre member",
+};
 const GROUPS: Record<MemberKind, DevFieldGroup[]> = {
   productionMember: PRODUCTION_MEMBER_FIELDS,
   rosterMember: ROSTER_MEMBER_FIELDS,
@@ -292,12 +332,14 @@ const modalTitle = (kind: MemberKind, f: Record<string, string>) => {
 const TeamRecordModal = ({
   selected,
   row,
+  lookups,
   onClose,
   onSave,
   onDelete,
 }: {
   selected: SelectedRecord;
   row: Row;
+  lookups: Lookups;
   onClose: () => void;
   onSave: (fieldData: Record<string, string>) => Promise<unknown>;
   onDelete: () => Promise<unknown>;
@@ -306,6 +348,7 @@ const TeamRecordModal = ({
     eyebrow={EYEBROW[selected.kind]}
     fieldData={row.fieldData}
     groups={GROUPS[selected.kind]}
+    lookups={lookups}
     onClose={onClose}
     onDelete={onDelete}
     onSave={onSave}
@@ -318,6 +361,7 @@ export const TeamTab = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedRecord | null>(null);
+  const [creatingKind, setCreatingKind] = useState<MemberKind | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryFn: fetchTeamBundle,
@@ -382,6 +426,8 @@ export const TeamTab = () => {
     theatreMember: theatreMembers,
   };
 
+  const lookups = buildLookups(data);
+
   const selectedRow = selected
     ? rowsByKind[selected.kind].find((m) => m.recordId === selected.recordId)
     : undefined;
@@ -390,7 +436,7 @@ export const TeamTab = () => {
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <input
-          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base focus:outline-none focus:ring-2 focus:ring-primary/40 md:text-sm"
+          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30 md:text-sm"
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search team by account, email, role, show, or theatre…"
           type="text"
@@ -416,6 +462,8 @@ export const TeamTab = () => {
             columns={productionMemberColumns(productionsById)}
             emptyText="No production members match your search."
             label="Production Members — per-show invites"
+            newLabel="New production member"
+            onNew={() => setCreatingKind("productionMember")}
             onSelect={(recordId) =>
               setSelected({ kind: "productionMember", recordId })
             }
@@ -426,6 +474,8 @@ export const TeamTab = () => {
             columns={theatreMemberColumns(theatresById)}
             emptyText="No theatre members match your search."
             label="Theatre Members — theatre-level access"
+            newLabel="New theatre member"
+            onNew={() => setCreatingKind("theatreMember")}
             onSelect={(recordId) =>
               setSelected({ kind: "theatreMember", recordId })
             }
@@ -436,6 +486,8 @@ export const TeamTab = () => {
             columns={ROSTER_MEMBER_COLUMNS}
             emptyText="No roster members match your search."
             label="Roster Members — reusable people per owner"
+            newLabel="New roster member"
+            onNew={() => setCreatingKind("rosterMember")}
             onSelect={(recordId) =>
               setSelected({ kind: "rosterMember", recordId })
             }
@@ -447,6 +499,7 @@ export const TeamTab = () => {
 
       {selected && selectedRow && (
         <TeamRecordModal
+          lookups={lookups}
           onClose={() => setSelected(null)}
           onDelete={() =>
             mutationsByKind[selected.kind].remove.mutateAsync(selected.recordId)
@@ -459,6 +512,19 @@ export const TeamTab = () => {
           }
           row={selectedRow}
           selected={selected}
+        />
+      )}
+
+      {creatingKind && (
+        <RecordEditModal
+          eyebrow={EYEBROW[creatingKind]}
+          groups={GROUPS[creatingKind]}
+          lookups={lookups}
+          onClose={() => setCreatingKind(null)}
+          onSave={(fieldData) =>
+            mutationsByKind[creatingKind].create.mutateAsync(fieldData)
+          }
+          title={NEW_TITLE[creatingKind]}
         />
       )}
     </section>

@@ -6,7 +6,8 @@ import {
   ProductionsLayout,
 } from "../config/schemas/filemaker/client";
 import { emptyOnNoRecords } from "../lib/data";
-import { RecordEditModal } from "./record-edit-modal";
+import { buildLookups } from "./lookups";
+import { NewRecordButton, RecordEditModal } from "./record-edit-modal";
 import type { DevFieldGroup } from "./record-edit-modal";
 
 const DAY_OPTIONS = [
@@ -29,7 +30,12 @@ const PREFERENCE_TYPE_COLORS: Record<string, string> = {
 const FIELD_GROUPS: DevFieldGroup[] = [
   {
     fields: [
-      { key: "idProduction", kind: "text", label: "Show (idProduction)" },
+      {
+        key: "idProduction",
+        kind: "relation",
+        label: "Show",
+        lookup: "productions",
+      },
       {
         key: "DayOfWeek",
         kind: "select",
@@ -56,6 +62,7 @@ export const PreferencesTab = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // Sequential — see ScenesTab for why (single-threaded FM script execution
   // behind the WebViewerAdapter; concurrent fmFetch calls queue and stall).
@@ -118,6 +125,15 @@ export const PreferencesTab = () => {
       queryClient.invalidateQueries({ queryKey: ["dev-preferences-bundle"] }),
   });
 
+  const lookups = buildLookups(data);
+
+  const createMutation = useMutation({
+    mutationFn: (fieldData: Record<string, string>) =>
+      DayTimePreferencesLayout.create({ fieldData }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["dev-preferences-bundle"] }),
+  });
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -126,11 +142,17 @@ export const PreferencesTab = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search preferences by show, day, or type…"
-          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30"
         />
-        <span className="text-sm text-muted-foreground">
-          {filtered.length} of {preferences.length} records
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {preferences.length} records
+          </span>
+          <NewRecordButton
+            label="New preference"
+            onClick={() => setCreating(true)}
+          />
+        </div>
       </div>
 
       {isLoading && (
@@ -217,6 +239,7 @@ export const PreferencesTab = () => {
           recordId={selected.recordId}
           fieldData={selected.fieldData}
           groups={FIELD_GROUPS}
+          lookups={lookups}
           onClose={() => setSelectedRecordId(null)}
           onSave={(fieldData) =>
             updateMutation.mutateAsync({
@@ -225,6 +248,17 @@ export const PreferencesTab = () => {
             })
           }
           onDelete={() => deleteMutation.mutateAsync(selected.recordId)}
+        />
+      )}
+
+      {creating && (
+        <RecordEditModal
+          eyebrow="Preference · DayTimePreferences"
+          title="New preference"
+          groups={FIELD_GROUPS}
+          lookups={lookups}
+          onClose={() => setCreating(false)}
+          onSave={(fieldData) => createMutation.mutateAsync(fieldData)}
         />
       )}
     </section>

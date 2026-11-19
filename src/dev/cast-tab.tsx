@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { CastMembersLayout } from "../config/schemas/filemaker/client";
 import { emptyOnNoRecords } from "../lib/data";
-import { RecordEditModal } from "./record-edit-modal";
+import { NewRecordButton, RecordEditModal } from "./record-edit-modal";
 import type { DevFieldGroup } from "./record-edit-modal";
 
 const FIELD_GROUPS: DevFieldGroup[] = [
@@ -43,6 +43,7 @@ export const CastTab = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryFn: () =>
@@ -93,6 +94,13 @@ export const CastTab = () => {
       queryClient.invalidateQueries({ queryKey: ["dev-cast-members"] }),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (fieldData: Record<string, string>) =>
+      CastMembersLayout.create({ fieldData }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["dev-cast-members"] }),
+  });
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -101,11 +109,17 @@ export const CastTab = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search cast by name, email, or owner…"
-          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30"
         />
-        <span className="text-sm text-muted-foreground">
-          {filtered.length} of {cast.length} records
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {cast.length} records
+          </span>
+          <NewRecordButton
+            label="New cast member"
+            onClick={() => setCreating(true)}
+          />
+        </div>
       </div>
 
       {isLoading && (
@@ -206,6 +220,16 @@ export const CastTab = () => {
             })
           }
           onDelete={() => deleteMutation.mutateAsync(selected.recordId)}
+        />
+      )}
+
+      {creating && (
+        <RecordEditModal
+          eyebrow="Cast member · CastMembers"
+          title="New cast member"
+          groups={FIELD_GROUPS}
+          onClose={() => setCreating(false)}
+          onSave={(fieldData) => createMutation.mutateAsync(fieldData)}
         />
       )}
     </section>

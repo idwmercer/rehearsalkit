@@ -18,6 +18,7 @@ import rehearsalKitLogo from "./assets/RKLogo.png";
 import { AssignmentsTab } from "./dev/assignments-tab";
 import { BlackoutsTab } from "./dev/blackouts-tab";
 import { CastTab } from "./dev/cast-tab";
+import { CharactersTab } from "./dev/characters-tab";
 import { ConflictsTab } from "./dev/conflicts-tab";
 import { DashboardTab } from "./dev/dashboard-tab";
 import { PreferencesTab } from "./dev/preferences-tab";
@@ -33,6 +34,7 @@ type TabKey =
   | "dashboard"
   | "theatres"
   | "shows"
+  | "characters"
   | "scenes"
   | "rehearsals"
   | "assignments"
@@ -52,6 +54,7 @@ const TABS: TabSpec[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "theatres", label: "Theatres" },
   { key: "shows", label: "Shows" },
+  { key: "characters", label: "Characters" },
   { key: "scenes", label: "Scenes" },
   { key: "rehearsals", label: "Rehearsals" },
   { key: "assignments", label: "Assignments" },
@@ -251,6 +254,13 @@ export const DevApp = () => {
             <span className="h-2 w-2 rounded-full bg-green-600 shadow-[0_0_0_3px_rgba(117,142,79,0.2)]" />
             Connected:{" "}
             <strong className="text-foreground">RehearsalKit_MASTER</strong>
+            <span className="border-l border-border pl-2 text-xs">
+              Build{" "}
+              {new Date(__BUILD_TIME__).toLocaleString(undefined, {
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+            </span>
           </div>
         </div>
 
@@ -274,6 +284,7 @@ export const DevApp = () => {
         {tab === "dashboard" && <DashboardTab onNavigate={navigateTab} />}
         {tab === "theatres" && <TheatresTab />}
         {tab === "shows" && <ShowsTab />}
+        {tab === "characters" && <CharactersTab />}
         {tab === "scenes" && <ScenesTab />}
         {tab === "rehearsals" && <RehearsalsTab />}
         {tab === "assignments" && <AssignmentsTab />}

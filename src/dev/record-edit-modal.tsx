@@ -1,13 +1,31 @@
-import { Trash2, X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 
-export type DevFieldKind = "text" | "textarea" | "select" | "time" | "date";
+import { DateInput } from "./date-input";
+import type { LookupOption, Lookups } from "./lookups";
+
+export type DevFieldKind =
+  | "text"
+  | "textarea"
+  | "select"
+  | "relation"
+  | "time"
+  | "date";
 
 export interface DevFieldSpec {
   key: string;
   label: string;
   kind: DevFieldKind;
   options?: string[];
+  /** For `relation` fields: the name of the list in the modal's `lookups`. */
+  lookup?: string;
+  /**
+   * Shown but not editable, and never sent on save. Use it for calculation
+   * fields: FileMaker rejects an update that includes one (error 201, "Field
+   * cannot be modified") and the whole save fails.
+   */
+  readOnly?: boolean;
   span2?: boolean;
 }
 
@@ -33,32 +51,122 @@ const SYSTEM_FIELDS: { key: string; label: string }[] = [
 
 type MTab = "fields" | "system" | "raw";
 
+/**
+ * Edit mode needs `recordId`, `fieldData` and `onDelete`. Leave all three out
+ * to open the modal in create mode: blank form, no System / Raw JSON tabs, no
+ * delete, and blank fields are left out of what `onSave` receives so
+ * FileMaker's auto-enter values (id, defaults) still apply to the new record.
+ */
 interface RecordEditModalProps {
   eyebrow: string;
   title: string;
-  recordId: string;
-  fieldData: Record<string, string | number>;
+  recordId?: string;
+  fieldData?: Record<string, string | number>;
   groups: DevFieldGroup[];
+  /** Extra content shown under the fields when editing (not when creating). */
+  children?: ReactNode;
+  lookups?: Lookups;
   onClose: () => void;
   onSave: (updated: Record<string, string>) => Promise<unknown>;
-  onDelete: () => Promise<unknown>;
+  onDelete?: () => Promise<unknown>;
 }
+
+const EMPTY_FIELD_DATA: Record<string, string | number> = {};
+const EMPTY_LOOKUPS: Lookups = {};
 
 const staticInputClass =
   "rounded-lg border border-input bg-secondary px-3 py-2 text-base md:text-sm text-muted-foreground";
 const inputClass =
-  "rounded-lg border border-input bg-background px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
+  "rounded-lg border border-input bg-background px-3 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30";
+
+const fieldInputClass = (field: DevFieldSpec) =>
+  field.readOnly ? staticInputClass : inputClass;
+
+// What gets sent to FileMaker: read-only (calculation) fields are always left
+// out, and a new record also leaves out blank fields so auto-enter values
+// (id, defaults) still apply.
+const buildPayload = (
+  form: Record<string, string>,
+  groups: DevFieldGroup[],
+  isCreate: boolean
+): Record<string, string> => {
+  const readOnlyKeys = new Set(
+    groups.flatMap((g) => g.fields.filter((f) => f.readOnly).map((f) => f.key))
+  );
+  return Object.fromEntries(
+    Object.entries(form).filter(
+      ([key, value]) => !readOnlyKeys.has(key) && !(isCreate && value === "")
+    )
+  );
+};
+
+/**
+ * Dropdown of related records. The stored value is the record's id; the
+ * person picks by name. A stored id that isn't in the list (deleted record,
+ * or one from another show) stays selectable so saving never wipes it.
+ */
+const RelationSelect = ({
+  id,
+  options,
+  value,
+  onChange,
+}: {
+  id: string;
+  options: LookupOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) => {
+  const isKnown = options.some((o) => o.value === value);
+  return (
+    <select
+      id={id}
+      className={inputClass}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">—</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+      {value && !isKnown && (
+        <option value={value}>{`Unknown record (${value})`}</option>
+      )}
+    </select>
+  );
+};
+
+export const NewRecordButton = ({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center gap-1.5 rounded-xl bg-orange-500 px-3.5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+  >
+    <Plus className="h-4 w-4" />
+    {label}
+  </button>
+);
 
 export const RecordEditModal = ({
   eyebrow,
   title,
   recordId,
-  fieldData,
+  fieldData = EMPTY_FIELD_DATA,
   groups,
+  children,
+  lookups = EMPTY_LOOKUPS,
   onClose,
   onSave,
   onDelete,
 }: RecordEditModalProps) => {
+  const isCreate = recordId === undefined;
   const editableKeys = groups.flatMap((g) => g.fields.map((f) => f.key));
   const [form, setForm] = useState<Record<string, string>>(() =>
     Object.fromEntries(editableKeys.map((k) => [k, String(fieldData[k] ?? "")]))
@@ -77,11 +185,13 @@ export const RecordEditModal = ({
     setSaving(true);
     setSaveError(null);
     try {
-      await onSave(form);
+      await onSave(buildPayload(form, groups, isCreate));
       onClose();
     } catch (error) {
       setSaveError(
-        error instanceof Error ? error.message : "Failed to save changes."
+        error instanceof Error
+          ? error.message
+          : `Failed to ${isCreate ? "create record" : "save changes"}.`
       );
     } finally {
       setSaving(false);
@@ -89,6 +199,9 @@ export const RecordEditModal = ({
   };
 
   const handleDelete = async () => {
+    if (!onDelete) {
+      return;
+    }
     setDeleting(true);
     setDeleteError(null);
     try {
@@ -123,12 +236,13 @@ export const RecordEditModal = ({
         </div>
 
         <div className="flex gap-5 border-b border-border px-6">
-          {(
-            [
-              ["fields", "Fields"],
-              ["system", "System"],
-              ["raw", "Raw JSON"],
-            ] as [MTab, string][]
+          {(isCreate
+            ? ([["fields", "Fields"]] as [MTab, string][])
+            : ([
+                ["fields", "Fields"],
+                ["system", "System"],
+                ["raw", "Raw JSON"],
+              ] as [MTab, string][])
           ).map(([key, label]) => (
             <button
               key={key}
@@ -161,10 +275,10 @@ export const RecordEditModal = ({
                     {group.fields.map((f) => (
                       <div
                         key={f.key}
-                        className={`flex flex-col gap-1.5 ${f.span2 ? "col-span-full" : ""}`}
+                        className={`group flex flex-col gap-1.5 ${f.span2 ? "col-span-full" : ""}`}
                       >
                         <label
-                          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors group-focus-within:text-orange-600"
                           htmlFor={`f-${f.key}`}
                         >
                           {f.label}
@@ -172,7 +286,8 @@ export const RecordEditModal = ({
                         {f.kind === "textarea" && (
                           <textarea
                             id={`f-${f.key}`}
-                            className={`${inputClass} min-h-20 resize-y`}
+                            className={`${fieldInputClass(f)} min-h-20 resize-y`}
+                            disabled={f.readOnly}
                             value={form[f.key] ?? ""}
                             onChange={(e) => setField(f.key, e.target.value)}
                           />
@@ -192,11 +307,20 @@ export const RecordEditModal = ({
                             ))}
                           </select>
                         )}
+                        {f.kind === "relation" && (
+                          <RelationSelect
+                            id={`f-${f.key}`}
+                            options={lookups[f.lookup ?? ""] ?? []}
+                            value={form[f.key] ?? ""}
+                            onChange={(v) => setField(f.key, v)}
+                          />
+                        )}
                         {f.kind === "text" && (
                           <input
                             id={`f-${f.key}`}
                             type="text"
-                            className={inputClass}
+                            className={fieldInputClass(f)}
+                            disabled={f.readOnly}
                             value={form[f.key] ?? ""}
                             onChange={(e) => setField(f.key, e.target.value)}
                           />
@@ -212,14 +336,11 @@ export const RecordEditModal = ({
                           />
                         )}
                         {f.kind === "date" && (
-                          <input
+                          <DateInput
                             id={`f-${f.key}`}
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="MM/DD/YYYY"
                             className={inputClass}
                             value={form[f.key] ?? ""}
-                            onChange={(e) => setField(f.key, e.target.value)}
+                            onChange={(v) => setField(f.key, v)}
                           />
                         )}
                       </div>
@@ -227,9 +348,7 @@ export const RecordEditModal = ({
                   </div>
                 </div>
               ))}
-              {saveError && (
-                <p className="text-sm text-destructive">{saveError}</p>
-              )}
+              {!isCreate && children}
             </div>
           )}
 
@@ -247,7 +366,7 @@ export const RecordEditModal = ({
                   <input
                     readOnly
                     disabled
-                    value={recordId}
+                    value={recordId ?? ""}
                     className={staticInputClass}
                   />
                 </div>
@@ -275,9 +394,17 @@ export const RecordEditModal = ({
           )}
         </div>
 
+        {saveError && (
+          <p
+            role="alert"
+            className="border-t border-destructive/30 bg-destructive/5 px-6 py-3 text-sm text-destructive"
+          >
+            {`Could not ${isCreate ? "create the record" : "save"}: ${saveError}`}
+          </p>
+        )}
         <div className="flex items-center justify-between gap-3 border-t border-border px-6 py-4">
           <div>
-            {!confirmingDelete && (
+            {!(isCreate || confirmingDelete) && (
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
@@ -287,7 +414,7 @@ export const RecordEditModal = ({
                 Delete record
               </button>
             )}
-            {confirmingDelete && (
+            {!isCreate && confirmingDelete && (
               <div className="flex items-center gap-2 text-sm text-rust-700">
                 <span>Delete this record permanently?</span>
                 <button
@@ -325,7 +452,8 @@ export const RecordEditModal = ({
               onClick={handleSave}
               className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity"
             >
-              {saving ? "Saving…" : "Save changes"}
+              {saving && "Saving…"}
+              {!saving && (isCreate ? "Create record" : "Save changes")}
             </button>
           </div>
         </div>

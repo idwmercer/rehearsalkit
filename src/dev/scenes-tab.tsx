@@ -2,19 +2,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import {
+  CharactersLayout,
   ProductionsLayout,
   SceneCharactersLayout,
   ScenesLayout,
 } from "../config/schemas/filemaker/client";
 import { emptyOnNoRecords } from "../lib/data";
-import { RecordEditModal } from "./record-edit-modal";
+import { LinkedRecordsPanel } from "./linked-records-panel";
+import { buildLookups } from "./lookups";
+import { NewRecordButton, RecordEditModal } from "./record-edit-modal";
 import type { DevFieldGroup } from "./record-edit-modal";
 
 const FIELD_GROUPS: DevFieldGroup[] = [
   {
     fields: [
       { key: "Title", kind: "text", label: "Title" },
-      { key: "idProduction", kind: "text", label: "Show (idProduction)" },
+      {
+        key: "idProduction",
+        kind: "relation",
+        label: "Show",
+        lookup: "productions",
+      },
     ],
   },
   {
@@ -29,10 +37,87 @@ const FIELD_GROUPS: DevFieldGroup[] = [
   },
 ];
 
+const SCENES_QUERY_KEY = ["dev-scenes-bundle"];
+
+interface SceneCharactersData {
+  characters: {
+    fieldData: { CharacterName: string; id: string; idProduction: string };
+  }[];
+  sceneCharacters: {
+    fieldData: { idCharacter: string; idScene: string };
+    recordId: string;
+  }[];
+}
+
+interface SceneCharactersSectionProps {
+  data: SceneCharactersData | undefined;
+  productionId: string;
+  sceneId: string;
+}
+
+// Which characters are in a scene. Each add / remove is its own SceneCharacters
+// record, saved straight away (not with the form's Save button). Only
+// characters from the scene's own show can be added.
+const SceneCharactersSection = ({
+  data,
+  productionId,
+  sceneId,
+}: SceneCharactersSectionProps) => {
+  const characters = data?.characters ?? [];
+  const sceneCharacters = data?.sceneCharacters ?? [];
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: SCENES_QUERY_KEY });
+
+  const addMutation = useMutation({
+    mutationFn: (idCharacter: string) =>
+      SceneCharactersLayout.create({
+        fieldData: { idCharacter, idScene: sceneId },
+      }),
+    onSuccess: refresh,
+  });
+  const removeMutation = useMutation({
+    mutationFn: (recordId: string) =>
+      SceneCharactersLayout.delete({ recordId }),
+    onSuccess: refresh,
+  });
+
+  const nameById = new Map(
+    characters.map((c) => [c.fieldData.id, c.fieldData.CharacterName])
+  );
+  const links = sceneCharacters.filter((l) => l.fieldData.idScene === sceneId);
+  const linkedIds = new Set(links.map((l) => l.fieldData.idCharacter));
+
+  return (
+    <LinkedRecordsPanel
+      addPlaceholder="Add a character…"
+      emptyText="No characters linked to this scene yet."
+      heading="Characters in this scene"
+      items={links.map((l) => ({
+        label: nameById.get(l.fieldData.idCharacter) ?? "Unknown character",
+        recordId: l.recordId,
+      }))}
+      onAdd={(idCharacter) => addMutation.mutateAsync(idCharacter)}
+      onRemove={(recordId) => removeMutation.mutateAsync(recordId)}
+      options={characters
+        .filter(
+          (c) =>
+            c.fieldData.idProduction === productionId &&
+            !linkedIds.has(c.fieldData.id)
+        )
+        .map((c) => ({
+          label: c.fieldData.CharacterName,
+          value: c.fieldData.id,
+        }))}
+    />
+  );
+};
+
 export const ScenesTab = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // Sequential — WebViewerAdapter scripts execute single-threaded in
   // FileMaker, so this avoids racing concurrent fmFetch calls.
@@ -49,13 +134,15 @@ export const ScenesTab = () => {
       const sceneCharacters = await emptyOnNoRecords(() =>
         SceneCharactersLayout.list()
       );
+      const characters = await emptyOnNoRecords(() => CharactersLayout.list());
       return {
+        characters: characters.data,
         productions: productions.data,
         sceneCharacters: sceneCharacters.data,
         scenes: scenes.data,
       };
     },
-    queryKey: ["dev-scenes-bundle"],
+    queryKey: SCENES_QUERY_KEY,
   });
 
   const scenes = data?.scenes ?? [];
@@ -101,6 +188,15 @@ export const ScenesTab = () => {
       queryClient.invalidateQueries({ queryKey: ["dev-scenes-bundle"] }),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (fieldData: Record<string, string>) =>
+      ScenesLayout.create({ fieldData }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["dev-scenes-bundle"] }),
+  });
+
+  const lookups = buildLookups(data);
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -109,11 +205,17 @@ export const ScenesTab = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search scenes by title, show, or description…"
-          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30"
         />
-        <span className="text-sm text-muted-foreground">
-          {filtered.length} of {scenes.length} records
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {scenes.length} records
+          </span>
+          <NewRecordButton
+            label="New scene"
+            onClick={() => setCreating(true)}
+          />
+        </div>
       </div>
 
       {isLoading && (
@@ -191,6 +293,7 @@ export const ScenesTab = () => {
           recordId={selected.recordId}
           fieldData={selected.fieldData}
           groups={FIELD_GROUPS}
+          lookups={lookups}
           onClose={() => setSelectedRecordId(null)}
           onSave={(fieldData) =>
             updateMutation.mutateAsync({
@@ -199,6 +302,23 @@ export const ScenesTab = () => {
             })
           }
           onDelete={() => deleteMutation.mutateAsync(selected.recordId)}
+        >
+          <SceneCharactersSection
+            data={data}
+            productionId={selected.fieldData.idProduction}
+            sceneId={selected.fieldData.id}
+          />
+        </RecordEditModal>
+      )}
+
+      {creating && (
+        <RecordEditModal
+          eyebrow="Scene · Scenes"
+          title="New scene"
+          groups={FIELD_GROUPS}
+          lookups={lookups}
+          onClose={() => setCreating(false)}
+          onSave={(fieldData) => createMutation.mutateAsync(fieldData)}
         />
       )}
     </section>

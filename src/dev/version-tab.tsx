@@ -4,9 +4,10 @@ import { useState } from "react";
 import { KitVersionLayout } from "../config/schemas/filemaker/client";
 import type { TKitVersion } from "../config/schemas/filemaker/generated/KitVersion";
 import { emptyOnNoRecords } from "../lib/data";
+import { DateInput } from "./date-input";
 
 const inputClass =
-  "rounded-lg border border-input bg-background px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
+  "rounded-lg border border-input bg-background px-3 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30";
 const numberInputClass = `${inputClass} w-20 text-center`;
 const labelClass =
   "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
@@ -130,13 +131,10 @@ const VersionForm = ({
             <label className={labelClass} htmlFor="v-release-date">
               Release date
             </label>
-            <input
+            <DateInput
               className={inputClass}
               id="v-release-date"
-              inputMode="numeric"
-              onChange={(e) => setField("ReleaseDate", e.target.value)}
-              placeholder="MM/DD/YYYY"
-              type="text"
+              onChange={(v) => setField("ReleaseDate", v)}
               value={form.ReleaseDate}
             />
           </div>
@@ -144,13 +142,10 @@ const VersionForm = ({
             <label className={labelClass} htmlFor="v-applied-date">
               Applied date
             </label>
-            <input
+            <DateInput
               className={inputClass}
               id="v-applied-date"
-              inputMode="numeric"
-              onChange={(e) => setField("AppliedDate", e.target.value)}
-              placeholder="MM/DD/YYYY"
-              type="text"
+              onChange={(v) => setField("AppliedDate", v)}
               value={form.AppliedDate}
             />
             <span className="text-xs text-muted-foreground">

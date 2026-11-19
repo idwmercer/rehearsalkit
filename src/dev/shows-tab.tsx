@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ProductionsLayout } from "../config/schemas/filemaker/client";
+import {
+  ProductionsLayout,
+  TheatresLayout,
+} from "../config/schemas/filemaker/client";
 import { emptyOnNoRecords } from "../lib/data";
-import { RecordEditModal } from "./record-edit-modal";
+import { buildLookups } from "./lookups";
+import { NewRecordButton, RecordEditModal } from "./record-edit-modal";
 import type { DevFieldGroup } from "./record-edit-modal";
 
 const STATUS_OPTIONS = [
@@ -48,7 +52,12 @@ const FIELD_GROUPS: DevFieldGroup[] = [
       { key: "DateOpening", kind: "date", label: "Opening" },
       { key: "DateClosing", kind: "date", label: "Closing" },
       { key: "idOwner", kind: "text", label: "Owner (idOwner)" },
-      { key: "idTheatre", kind: "text", label: "Theatre (idTheatre)" },
+      {
+        key: "idTheatre",
+        kind: "relation",
+        label: "Theatre",
+        lookup: "theatres",
+      },
       {
         key: "isActorPortalEnabled",
         kind: "select",
@@ -58,7 +67,8 @@ const FIELD_GROUPS: DevFieldGroup[] = [
       {
         key: "ActorPortalLink",
         kind: "text",
-        label: "Actor portal link",
+        label: "Actor portal link (calculated, read-only)",
+        readOnly: true,
         span2: true,
       },
       {
@@ -95,21 +105,27 @@ export const ShowsTab = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
+  // Sequential — see ScenesTab for why.
   const { data, isLoading, isError, error } = useQuery({
-    queryFn: () =>
-      emptyOnNoRecords(() =>
+    queryFn: async () => {
+      const productions = await emptyOnNoRecords(() =>
         ProductionsLayout.list({
           sort: [
             { fieldName: "Season", sortOrder: "descend" },
             { fieldName: "Title", sortOrder: "ascend" },
           ],
         })
-      ),
+      );
+      const theatres = await emptyOnNoRecords(() => TheatresLayout.list());
+      return { productions: productions.data, theatres: theatres.data };
+    },
     queryKey: ["dev-productions"],
   });
 
-  const shows = data?.data ?? [];
+  const shows = data?.productions ?? [];
+  const lookups = buildLookups(data);
   const q = search.toLowerCase();
   const filtered = shows.filter(
     (s) =>
@@ -140,6 +156,13 @@ export const ShowsTab = () => {
       queryClient.invalidateQueries({ queryKey: ["dev-productions"] }),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (fieldData: Record<string, string>) =>
+      ProductionsLayout.create({ fieldData }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["dev-productions"] }),
+  });
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -148,11 +171,14 @@ export const ShowsTab = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search shows by title, season, or owner…"
-          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30"
         />
-        <span className="text-sm text-muted-foreground">
-          {filtered.length} of {shows.length} records
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {shows.length} records
+          </span>
+          <NewRecordButton label="New show" onClick={() => setCreating(true)} />
+        </div>
       </div>
 
       {isLoading && (
@@ -251,6 +277,7 @@ export const ShowsTab = () => {
           recordId={selected.recordId}
           fieldData={selected.fieldData}
           groups={FIELD_GROUPS}
+          lookups={lookups}
           onClose={() => setSelectedRecordId(null)}
           onSave={(fieldData) =>
             updateMutation.mutateAsync({
@@ -259,6 +286,17 @@ export const ShowsTab = () => {
             })
           }
           onDelete={() => deleteMutation.mutateAsync(selected.recordId)}
+        />
+      )}
+
+      {creating && (
+        <RecordEditModal
+          eyebrow="Show · Productions"
+          title="New show"
+          groups={FIELD_GROUPS}
+          lookups={lookups}
+          onClose={() => setCreating(false)}
+          onSave={(fieldData) => createMutation.mutateAsync(fieldData)}
         />
       )}
     </section>

@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { TheatresLayout } from "../config/schemas/filemaker/client";
 import { emptyOnNoRecords } from "../lib/data";
-import { RecordEditModal } from "./record-edit-modal";
+import { NewRecordButton, RecordEditModal } from "./record-edit-modal";
 import type { DevFieldGroup } from "./record-edit-modal";
 
 const FIELD_GROUPS: DevFieldGroup[] = [
@@ -24,6 +24,7 @@ export const TheatresTab = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryFn: () =>
@@ -66,6 +67,13 @@ export const TheatresTab = () => {
       queryClient.invalidateQueries({ queryKey: ["dev-theatres"] }),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (fieldData: Record<string, string>) =>
+      TheatresLayout.create({ fieldData }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["dev-theatres"] }),
+  });
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -74,11 +82,17 @@ export const TheatresTab = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search theatres by name or admin account…"
-          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="w-full max-w-sm rounded-xl border border-border bg-card px-3.5 py-2 text-base md:text-sm focus:border-navy-500 focus:bg-card focus:outline-none focus:ring-4 focus:ring-orange-500/30"
         />
-        <span className="text-sm text-muted-foreground">
-          {filtered.length} of {theatres.length} records
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {theatres.length} records
+          </span>
+          <NewRecordButton
+            label="New theatre"
+            onClick={() => setCreating(true)}
+          />
+        </div>
       </div>
 
       {isLoading && (
@@ -156,6 +170,16 @@ export const TheatresTab = () => {
             })
           }
           onDelete={() => deleteMutation.mutateAsync(selected.recordId)}
+        />
+      )}
+
+      {creating && (
+        <RecordEditModal
+          eyebrow="Theatre · Theatres"
+          title="New theatre"
+          groups={FIELD_GROUPS}
+          onClose={() => setCreating(false)}
+          onSave={(fieldData) => createMutation.mutateAsync(fieldData)}
         />
       )}
     </section>
